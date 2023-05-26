@@ -1,3 +1,4 @@
+/* eslint-disable import/no-extraneous-dependencies */
 /* eslint-disable node/no-unsupported-features/es-syntax */
 const Tour = require('../models/tourModel');
 const APIFeatures = require('../utils/apiFeatures');
@@ -37,17 +38,23 @@ const getAllTours = async (req, res) => {
 const getTour = async (req, res) => {
   try {
     const tour = await Tour.findById(req.params.id);
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        tour,
-      },
-    });
+    if (tour) {
+      res.status(200).json({
+        status: 'success',
+        data: {
+          tour,
+        },
+      });
+    } else {
+      res.status(404).json({
+        status: 'failure',
+        message: 'Wrong ID, tour not found',
+      });
+    }
   } catch (err) {
-    res.status(404).json({
+    res.status(400).json({
       status: 'failure',
-      message: { error: err },
+      message: { error: err.message },
     });
   }
 };
@@ -106,6 +113,93 @@ const deleteTour = async (req, res) => {
   }
 };
 
+const getTourStats = async (req, res) => {
+  try {
+    const stats = await Tour.aggregate([
+      {
+        $match: { ratingsAverage: { $gte: 4.5 } },
+      },
+      {
+        $group: {
+          _id: { $toUpper: '$difficulty' },
+          numTours: { $sum: 1 },
+          numRatings: { $sum: '$ratingsQuantity' },
+          avgRating: { $avg: '$ratingsAverage' },
+          avgPrice: { $avg: '$price' },
+          minPrice: { $min: '$price' },
+          maxPrice: { $max: '$price' },
+        },
+      },
+      {
+        $sort: { avgPrice: 1 },
+      },
+      // {
+      //   $match: { _id: { $ne: 'EASY' } },
+      // },
+    ]);
+
+    res.status(200).json({
+      status: 'success',
+      data: { stats },
+    });
+  } catch (err) {
+    res.status(404).json({
+      status: 'failure',
+      message: { error: err },
+    });
+  }
+};
+
+const getMonthlyPlan = async (req, res) => {
+  try {
+    const year = req.params.year * 1;
+    const plan = await Tour.aggregate([
+      {
+        $unwind: '$startDates',
+      },
+      {
+        $match: {
+          startDates: {
+            $gte: new Date(`${year}-01-01`),
+            $lte: new Date(`${year}-12-31`),
+          },
+        },
+      },
+      {
+        $group: {
+          _id: { $month: '$startDates' },
+          numTourStarts: { $sum: 1 },
+          tours: { $push: '$name' },
+        },
+      },
+      {
+        $addFields: { month: '$_id' },
+      },
+      {
+        $project: {
+          _id: 0,
+        },
+      },
+      {
+        $sort: { numTourStarts: -1 },
+      },
+      {
+        $limit: 6,
+      },
+    ]);
+
+    res.status(200).json({
+      status: 'success',
+      data: { plan },
+    });
+  } catch (err) {
+    res.status(404).json({
+      status: 'failure',
+      message: { error: err },
+    });
+  }
+};
+
 module.exports = {
   getAllTours,
   getTour,
@@ -113,6 +207,8 @@ module.exports = {
   updateTour,
   deleteTour,
   aliasTopTours,
+  getTourStats,
+  getMonthlyPlan,
 };
 
 // /api/v1/tours?duration[gte]=5&price[lt]=1500&sort=price,ratingsAverage
