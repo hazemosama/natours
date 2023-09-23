@@ -19,7 +19,7 @@ const getAllTours = catchAsync(async (req, res, next) => {
     .limitFields()
     .paginate();
 
-  const tours = await features.execute();
+  const tours = await features.query;
 
   res.status(200).json({
     status: 'success',
